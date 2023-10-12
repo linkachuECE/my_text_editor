@@ -2,17 +2,17 @@ pub mod editor;
 pub mod terminal;
 pub mod row;
 pub mod document;
+
 use editor::Editor;
-use docopt::Docopt;
 
-
-
-fn main() {
+fn main() -> Result<(), std::io::Error>{
     let args: Vec<String> = std::env::args().collect();
-    let filename = args.get(1).expect("Please pass in a filename as an argument");
+    let default = "test.txt".to_string();
+    let filename = args.get(1).unwrap_or(&default);
 
     let mut editor = Editor::default();
+    editor.open(filename.to_string())?;
+    editor.run()?;
 
-    editor.open(filename.clone());
-    editor.run();
+    Ok(())
 }

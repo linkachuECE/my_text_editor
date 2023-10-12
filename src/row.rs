@@ -50,12 +50,12 @@ impl Row {
     }
 
     pub fn remove_char(&mut self, column_index: usize){
-        let first_half = &self.string[0..column_index];
-        let second_half = &self.string[column_index + 1..];
+        let new_string: String = self.string.chars()
+                                         .take(column_index - 1)
+                                         .chain(self.string.chars().skip(column_index))
+                                         .collect();
 
-        let mut new_string: String = first_half.to_string();
-        new_string += second_half;
-
+        self.string.clear();
         self.string = new_string.clone();
     }
 

@@ -44,8 +44,13 @@ impl Document {
     }
 
     pub fn remove_from_row(&mut self, row_index: usize, column_index: usize){
-        if row_index < self.rows.len() && column_index < self.rows[row_index].len(){
-            self.rows[row_index].remove_char(column_index);
+        if row_index < self.rows.len(){
+            if column_index < self.rows[row_index].len(){
+                self.rows[row_index].remove_char(column_index);
+            } else {
+                let len = self.rows[row_index].len();
+                self.rows[row_index].remove_char(len - 1);
+            }
         }
     }
 

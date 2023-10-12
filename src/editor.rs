@@ -21,95 +21,147 @@ fn die(e: Error){
 }
 
 impl Editor {
+    // Opens a document, returns error if the file cannot be opened
     pub fn open(&mut self, filepath: String) -> std::io::Result<()>{
         self.document = Document::open(filepath)?;
         Ok(())
     }
 
+    // Clears the screen and continually refreshes
     pub fn run(&mut self) -> Result<(), std::io::Error> {
+
+        // Set up the terminal in raw character mode
         let _stdout = stdout().into_raw_mode()?;
+
+        // Clear the screen
         self.term.clear_screen()?;
+
+        // Draw the rows initially
         self.draw_rows()?;
 
+        // Loop until exit
         loop {
+
+            // Refresh the screen, process any errors
             if let Err(error) = self.refresh_screen() {
                 die(error);
             }
 
+            // Wait until any keypresses, process any errors
             if let Err(error) = self.process_keypress() {
                 die(error);
             }
 
+            // If we are now set to quit, do so
             if self.should_quit {
                 self.refresh_screen()?;
                 break;
             }
         }
+
+        // Exit succesfully
         Ok(())
     }
 
+    // Refresh the screen
     pub fn refresh_screen(&mut self) -> Result<(), std::io::Error> {
+
+        // Hide the cursor initially
         self.term.cursor_hide();
+
+        // Set the cursor position to the very beginning
         self.term.cursor_position(&Position::default());
 
+        // If we should quit, clear the screen, otherwise, set the cursor position back to the right spot
         if self.should_quit {
             self.term.clear_screen()?;
         } else {
+            self.draw_rows()?;
             self.term.cursor_position(&self.cursor_position);
         }
 
+        // Show the cursor and flush the terminal
         self.term.cursor_show();
         self.term.flush()
     }
 
+    // Keypress handler for moving the cursor
     fn move_cursor(&mut self, key: Key) {
+        
+        // Grab the current position
         let Position{mut x, mut y} = self.cursor_position;
+
+        // Find the key
         match key {
+
+            // Move left
             Key::Left => {
+                // If we are in middle or end of the row, move left
                 if x != 0 {
                     x = x.saturating_sub(1);
-                } else if y != 0 {
+                }
+                // Otherwise, move to the end of the previous row 
+                else if y != 0 {
                     y = y.saturating_sub(1);
-                    x = self.document.row_len(y) - 1;
+                    x = self.document.row_len(y);
                 }
             }
+            
+            // Move right
             Key::Right => {
-                if x < self.document.row_len(y) - 1 {
+                // If we are in the middle or beginning of the row, move right
+                if x < self.document.row_len(y){
                     x = x.saturating_add(1);
-                } else if y < self.document.line_count() - 1{
+                }
+                // Otherwise, move to the beginning of the next row 
+                else if y < self.document.line_count() - 1{
                     y += 1;
                     x = 0;
                 }
             }
+
+            // Move up
             Key::Up => {
                 if y > 0 { 
                     y = y.saturating_sub(1);
                 }
 
-                if x > self.document.row_len(y) - 1 {
-                    x = self.document.row_len(y) - 1;
+                if x > self.document.row_len(y){
+                    x = self.document.row_len(y);
                 }
             } 
+
+            // Move down
             Key::Down => {
+                // If we are not yet at the bottom of the document, move down a row
                 if y < self.document.line_count() - 1 { 
                     y = y.saturating_add(1);
                 }
 
+                // If we are past the last letter in the row, move back to the end
                 if x > self.document.row_len(y) - 1 {
                     x = self.document.row_len(y) - 1;
                 }
             } 
+
+            // Page down
             Key::PageDown => {
                 y = self.document.line_count() - 1;
                 x = self.document.row_len(y) - 1;
             },
+
+            // Page up
             Key::PageUp => {
                 y = 0;
                 x = 0;
             },
+
+            // Home
             Key::Home => {
                 x = 0;
             }, 
+
+            // End
             Key::End => {
                 x = self.document.row_len(y) - 1;
             },
@@ -120,35 +172,54 @@ impl Editor {
         self.cursor_position.y = y;
     }
 
+    // Handles keypresses for actually editing the text itself
     fn edit_text(&mut self, key: Key) {
+        // Get the current cursor position
         let Position{mut x, mut y} = self.cursor_position;
+        
+        // Match the key
         match key {
+            // Backspace
             Key::Backspace => {
+                // If we're at the beginning of the row
                 if self.cursor_position.x == 0 {
-                    if self.document.row_len(y) == 0 {
+                    // If the row has at least one character, remove the row and append it to the previous row
+                    if self.document.row_len(y) != 0 {
                         self.document.remove_and_append_to_previous_row(y); 
-                    } else {
-                        self.document.remove_from_row(x - 1, y);
-                        self.move_cursor(Key::Left)
                     }
-                } else {
-                    self.document.remove_from_row(self.cursor_position.x, self.cursor_position.y);
-                    self.move_cursor(Key::Left);
+                    // Otherwise if the row has no characters 
+                    else {
+                        self.document.remove_row(y);
+                    }
                 }
+                // Otherwise if we're in the middle or end of the row, just remove the character 
+                else {
+                    self.document.remove_from_row(self.cursor_position.y, self.cursor_position.x);
+                }
+                // Move to the left
+                self.move_cursor(Key::Left);
             },
-            Key::Delete => {
-                
-            },
-            Key::Char('\n') => {
 
-            }, 
-            Key::Char(k) => {
-                if self.cursor_position.x == (self.term.size().width - 1) as usize{
-                    self.move_cursor(Key::Down);
-                    self.cursor_position.x = 0;
-                } else {
-                    self.move_cursor(Key::Right);
+            // Delete
+            Key::Delete => {
+                // If we're in the middle or beginning of a row
+                if self.cursor_position.x < self.document.row_len(self.cursor_position.y) {
+                    self.document.remove_from_row(self.cursor_position.y, self.cursor_position.x + 1);
                 }
+                // Or if we are the end of a row, append the next row to the current
+                else {
+                    self.document.remove_and_append_to_previous_row(self.cursor_position.y + 1);
+                }
+            },
+            // Enter key
+            Key::Char('\n') => {
+                self.document.add_row(self.cursor_position.y);
+                self.move_cursor(Key::Right);
+            }, 
+            // Any other character
+            Key::Char(c) => {
+                self.document.insert_into_row(self.cursor_position.y, self.cursor_position.x, c);
+                self.move_cursor(Key::Right);
             },
             _ => ()
         }
